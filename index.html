@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Treasure Hunt Game</title>
+  <!-- Load Tone.js for sound effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif; /* Using Inter font */
+      background: linear-gradient(to bottom, #d2b48c, #8b4513); /* Desert gradient */
+      margin: 0;
+      padding: 2rem;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden; /* Prevent scrollbar from pyramid */
+    }
+
+    /* Pyramid-like background elements */
+    body::before, body::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      width: 0;
+      height: 0;
+      border-style: solid;
+      opacity: 0.2;
+      z-index: -1;
+    }
+
+    body::before {
+      left: 10%;
+      border-width: 0 100px 150px 100px;
+      border-color: transparent transparent #a0522d transparent; /* Sienna */
+      transform: translateX(-50%);
+    }
+
+    body::after {
+      right: 10%;
+      border-width: 0 150px 200px 150px;
+      border-color: transparent transparent #cd853f transparent; /* Peru */
+      transform: translateX(50%);
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.95); /* Slightly transparent white */
+      padding: 2.5rem;
+      border-radius: 1.5rem;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      max-width: 500px; /* Slightly wider */
+      text-align: center;
+      border: 2px solid #a0522d; /* Sienna border */
+      position: relative;
+      z-index: 1; /* Ensure it's above pyramids */
+    }
+
+    h2 {
+      margin-bottom: 1.5rem;
+      color: #8b4513; /* SaddleBrown */
+      font-size: 2.2rem;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr); /* 4 columns */
+      gap: 12px; /* Slightly larger gap */
+      margin: 2rem auto; /* Center grid */
+      max-width: 440px; /* Adjust grid max width for 4 columns */
+    }
+
+    .cell {
+      width: 100%; /* Fill available space */
+      padding-bottom: 100%; /* Maintain aspect ratio (1:1) */
+      background-color: #f5deb3; /* Wheat colour for cards */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 2.5rem; /* Larger icon size */
+      cursor: pointer;
+      border-radius: 12px; /* More rounded corners */
+      transition: background-color 0.3s ease, transform 0.1s ease;
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1);
+      position: relative; /* For absolute positioning of inner content */
+      overflow: hidden; /* Hide overflow from padding-bottom trick */
+    }
+
+    .cell-content {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 2.5rem;
+        color: #654321; /* Darker brown for icons */
+        transition: opacity 1.5s ease-out, filter 1.5s ease-out; /* For fading */
+    }
+
+    .cell-content.faded-icon {
+      opacity: 0.3;
+      filter: grayscale(100%);
+    }
+
+    .cell:hover {
+      background-color: #f0e68c; /* Khaki on hover */
+      transform: translateY(-3px);
+    }
+
+    .cell.dug {
+      cursor: default; /* No more clicking after dug */
+    }
+
+    .message {
+      margin-top: 1.5rem;
+      font-size: 1.3rem;
+      color: #654321; /* Darker brown for message */
+      font-weight: 500;
+      min-height: 28px; /* Prevent layout shift */
+    }
+
+    .stats {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #4b5563;
+    }
+
+    .restart-btn {
+      margin-top: 1.5rem;
+      padding: 0.9rem 2rem;
+      font-size: 1.1rem;
+      background-color: #d2691e; /* Chocolate colour */
+      color: white;
+      border: none;
+      border-radius: 0.75rem;
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.1s ease;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .restart-btn:hover {
+      background-color: #a0522d; /* Sienna on hover */
+      transform: translateY(-2px);
+    }
+
+    .restart-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🔎 Treasure Hunt Game</h2>
+    <div class="grid" id="grid">
+      <!-- Grid cells will be generated here -->
+    </div>
+    <div class="message" id="message"></div>
+    <div class="stats" id="stats">Clicks: 0</div>
+    <button class="restart-btn" onclick="startGame()">Restart Game</button>
+  </div>
+
+  <script>
+    let treasureLocation, foundTreasure;
+    let emptySound, treasureSound;
+    let clicks = 0; // Variable to track clicks
+
+    // Initialise Tone.js sounds
+    Tone.start(); // Required to start audio context on user interaction
+
+    // Sound for empty spot (a short, low thud)
+    emptySound = new Tone.Synth({
+      oscillator: { type: "sine" },
+      envelope: {
+        attack: 0.01,
+        decay: 0.2,
+        sustain: 0.0,
+        release: 0.3
+      }
+    }).toDestination();
+
+    // Sound for treasure found (a brighter, ascending chime like a coin)
+    treasureSound = new Tone.Synth({
+      oscillator: { type: "sine" },
+      envelope: {
+        attack: 0.005,
+        decay: 0.1,
+        sustain: 0.0,
+        release: 0.1
+      }
+    }).toDestination();
+
+    // Total number of cells (4 columns x 6 rows = 24 cells)
+    const TOTAL_CELLS = 24;
+
+    function updateClickCount() {
+      document.getElementById("stats").textContent = `Clicks: ${clicks}`;
+    }
+
+    function startGame() {
+      // Generate grid and reset message
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      document.getElementById("message").textContent = "";
+      foundTreasure = false;
+      clicks = 0; // Reset clicks
+      updateClickCount(); // Update display
+
+      // Randomly place treasure in one of the grid cells (0-23 for 24 cells)
+      treasureLocation = Math.floor(Math.random() * TOTAL_CELLS);
+
+      // Create 24 grid cells (4x6)
+      for (let i = 0; i < TOTAL_CELLS; i++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        cell.dataset.index = i; // Store index for easy access
+        cell.onclick = () => dig(i);
+        // Add an inner div for content to handle padding-bottom trick and fading
+        const cellContent = document.createElement("div");
+        cellContent.classList.add("cell-content");
+        cell.appendChild(cellContent);
+        grid.appendChild(cell);
+      }
+    }
+
+    function dig(index) {
+      if (foundTreasure) return; // Prevent digging after treasure is found
+
+      const grid = document.getElementById("grid");
+      const cell = grid.children[index];
+      const cellContent = cell.querySelector('.cell-content');
+
+      if (cell.classList.contains('dug')) return; // Prevent re-digging the same spot
+      cell.classList.add('dug'); // Mark as dug
+      clicks++; // Increment click count
+      updateClickCount(); // Update display
+
+      if (index === treasureLocation) {
+        cell.style.backgroundColor = "#10b981"; // Treasure found (green)
+        cellContent.innerHTML = "&#127891;"; // Treasure chest icon (as requested, a "treasure box")
+        document.getElementById("message").textContent = "🎉 You found the treasure!";
+        foundTreasure = true;
+        treasureSound.triggerAttackRelease("G5", "16n"); // Play coin-like sound
+      } else {
+        cell.style.backgroundColor = "#f87171"; // Incorrect spot (red)
+        cellContent.innerHTML = "&#128373;"; // Shovel icon (empty spot)
+        emptySound.triggerAttackRelease("C3", "8n"); // Play empty sound
+
+        // Fade out the icon after 1.5 seconds
+        setTimeout(() => {
+          cellContent.classList.add('faded-icon');
+        }, 1500);
+
+        // Provide hints based on distance
+        const clickedRow = Math.floor(index / 4);
+        const clickedCol = index % 4;
+        const treasureRow = Math.floor(treasureLocation / 4);
+        const treasureCol = treasureLocation % 4;
+
+        // Manhattan distance
+        const distance = Math.abs(clickedRow - treasureRow) + Math.abs(clickedCol - treasureCol);
+
+        let hintMessage = "Keep digging...";
+        if (distance <= 1) {
+          hintMessage = "🔥 Hot! You're very close!";
+        } else if (distance <= 2) {
+          hintMessage = "🌡️ Warmer... getting there!";
+        } else if (distance <= 3) {
+          hintMessage = "☁️ Getting colder...";
+        } else {
+          hintMessage = "🥶 Cold! Try a different area.";
+        }
+        document.getElementById("message").textContent = hintMessage;
+      }
+    }
+
+    // Start the game immediately when the page loads
+    window.onload = startGame;
+  </script>
+</body>
+</html>
